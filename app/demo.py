@@ -1,5 +1,5 @@
 import gradio as gr
-from utils import generate_response
+from llm import generate_response
 
 with gr.Blocks() as demo:
     # State to maintain history history
@@ -9,7 +9,7 @@ with gr.Blocks() as demo:
     with gr.Row():
         # Left column takes approximately 90% width
         with gr.Column(scale=9):
-            chat_component = gr.Chatbot(label="Chat history", type="messages")
+            chatbot = gr.Chatbot(label="Chat history", type="messages")
             user_input = gr.Textbox(
                 placeholder="Enter your message here...", label="Your Message"
             )
@@ -43,7 +43,7 @@ with gr.Blocks() as demo:
             descriptiveness_slider,
             politeness_slider,
         ],
-        outputs=[chat_component, user_input],
+        outputs=[chatbot, user_input],
     )
 
 demo.launch()
