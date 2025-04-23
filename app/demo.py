@@ -9,7 +9,11 @@ with gr.Blocks() as demo:
     with gr.Row():
         # Left column takes approximately 90% width
         with gr.Column(scale=9):
-            chatbot = gr.Chatbot(label="Chat history", type="messages")
+            chatbot = gr.Chatbot(
+                label="Chat history",
+                type="messages",
+                show_copy_button=True,
+            )
             user_input = gr.Textbox(
                 placeholder="Enter your message here...", label="Your Message"
             )
@@ -45,6 +49,13 @@ with gr.Blocks() as demo:
             politeness_slider,
         ],
         outputs=[chatbot, user_input],
+    )
+
+    # clear histroy state after chatbot's bin click
+    chatbot.clear(
+        fn=lambda: ([], ""),
+        inputs=[],
+        outputs=[history, user_input],
     )
 
 demo.launch()
