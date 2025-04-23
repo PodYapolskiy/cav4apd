@@ -22,7 +22,7 @@ with gr.Blocks() as demo:
             model_selector = gr.Dropdown(
                 choices=model_choices,
                 label="Select Model",
-                value=model_choices[0],
+                value=model_choices[1],
             )
 
             # concept selectors

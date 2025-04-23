@@ -12,13 +12,13 @@ from transformer_lens.hook_points import HookPoint
 
 from utils import serialize_history, generate_with_hooks, get_hook_fn
 
-# MODEL_PATH = "Qwen/Qwen-1_8B-chat"
+MODEL_PATH = "Qwen/Qwen-1_8B-chat"
 DEVICE = "cpu"
 
 QWEN_USER_CONTENT_TEMPLATE = """<|im_start|>user{content}<|im_end|>\n"""
 QWEN_ASSISTANT_CONTENT_TEMPLATE = """{content}<|im_end|>\n<|im_start|>assistant\n"""
 
-MODEL_PATH = "google/gemma-2b-it"
+# MODEL_PATH = "google/gemma-2b-it"
 
 GEMMA_USER_CONTENT_TEMPLATE = """<bos><start_of_turn>user{content}<end_of_turn>\n"""
 GEMMA_ASSISTANT_CONTENT_TEMPLATE = (
@@ -37,9 +37,10 @@ model = HookedTransformer.from_pretrained_no_processing(
     MODEL_PATH,
     device=DEVICE,
     dtype=torch.bfloat16,
-    # default_padding_side="left",
-    # bf16=True,
 )
+if "Qwen" in MODEL_PATH:
+    model.tokenizer.padding_side = "left"
+    model.tokenizer.pad_token = "<|extra_0|>"
 
 
 def generate_response(
@@ -80,8 +81,16 @@ def generate_response(
     # politeness_hook_fn = get_hook_fn(concept="politeness", value=politeness)
 
     # intervention_layers = list(range(model.cfg.n_layers))
-    layer = "17"
-    fwd_hooks = [(utils.get_act_name("resid_post", layer), harmfulness_hook_fn)]
+    # layer = "17"
+
+    intervention_layers = list(range(model.cfg.n_layers))
+    # fwd_hooks = [(utils.get_act_name("resid_pre", '14'), harmfulness_hook_fn)]
+
+    fwd_hooks = [
+        (utils.get_act_name(act_name, l), harmfulness_hook_fn)
+        for l in intervention_layers
+        for act_name in ["resid_pre"]  # "resid_mid", "resid_post"
+    ]
 
     ####################
     # TOKENIZE HISTORY #

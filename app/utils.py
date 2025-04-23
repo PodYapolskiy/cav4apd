@@ -71,11 +71,11 @@ def direction_ablation_hook(
 
 
 def get_hook_fn(concept: str, value: int = 3) -> Callable:
-    layer = "17"  # TODO: make layer configurable
+    layer = "blocks.14.hook_resid_pre"  # TODO: make layer configurable
 
     if concept == "harmfulness":
-        with_concept_mean_activation = load_tensors("gemma", "harmful", layer)
-        without_concept_mean_activation = load_tensors("gemma", "harmless", layer)
+        with_concept_mean_activation = load_tensors("qwen", "harmful", layer)
+        without_concept_mean_activation = load_tensors("qwen", "harmless", layer)
     elif concept == "descriptiveness":
         raise NotImplementedError("")
         with_concept_mean_activation = load_tensors("gemma", "polite", layer)
@@ -90,7 +90,7 @@ def get_hook_fn(concept: str, value: int = 3) -> Callable:
         )
 
     concept_direction = with_concept_mean_activation - without_concept_mean_activation
-    concept_direction = concept_direction / (concept_direction.norm() * (value / 5))
+    concept_direction = concept_direction / (concept_direction.norm())  # * (value / 5)
 
     hook_fn = functools.partial(direction_ablation_hook, direction=concept_direction)
     return hook_fn
