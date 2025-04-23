@@ -10,23 +10,35 @@ from transformers import AutoTokenizer
 from transformer_lens import HookedTransformer, utils
 from transformer_lens.hook_points import HookPoint
 
-from utils import serialize_history, _generate_with_hooks
+from utils import serialize_history, generate_with_hooks, get_hook_fn
 
-MODEL_PATH = "Qwen/Qwen-1_8B-chat"
+# MODEL_PATH = "Qwen/Qwen-1_8B-chat"
 DEVICE = "cpu"
 
 QWEN_USER_CONTENT_TEMPLATE = """<|im_start|>user{content}<|im_end|>\n"""
 QWEN_ASSISTANT_CONTENT_TEMPLATE = """{content}<|im_end|>\n<|im_start|>assistant\n"""
 
-USER_CONTENT_TEMPLATE = QWEN_USER_CONTENT_TEMPLATE
-ASSISTANT_CONTENT_TEMPLATE = QWEN_ASSISTANT_CONTENT_TEMPLATE
+MODEL_PATH = "google/gemma-2b-it"
+
+GEMMA_USER_CONTENT_TEMPLATE = """<bos><start_of_turn>user{content}<end_of_turn>\n"""
+GEMMA_ASSISTANT_CONTENT_TEMPLATE = (
+    """{content}\n<start_of_turn>model"""  # ! TODO: check correctness
+)
+
+if "gemma" in MODEL_PATH:
+    USER_CONTENT_TEMPLATE = GEMMA_USER_CONTENT_TEMPLATE
+    ASSISTANT_CONTENT_TEMPLATE = GEMMA_ASSISTANT_CONTENT_TEMPLATE
+
+elif "Qwen" in MODEL_PATH:
+    USER_CONTENT_TEMPLATE = QWEN_USER_CONTENT_TEMPLATE
+    ASSISTANT_CONTENT_TEMPLATE = QWEN_ASSISTANT_CONTENT_TEMPLATE
 
 model = HookedTransformer.from_pretrained_no_processing(
     MODEL_PATH,
     device=DEVICE,
     dtype=torch.bfloat16,
-    default_padding_side="left",
-    bf16=True,
+    # default_padding_side="left",
+    # bf16=True,
 )
 
 
@@ -63,16 +75,13 @@ def generate_response(
     #########
     # HOOKS #
     #########
-    # harmfulness_hook_fn = get_hook_fn(concept="harmfulness", value=harmfulness)
+    harmfulness_hook_fn = get_hook_fn(concept="harmfulness", value=harmfulness)
     # descriptiveness_hook_fn = get_hook_fn(concept="descriptiveness", value=descriptiveness)
     # politeness_hook_fn = get_hook_fn(concept="politeness", value=politeness)
 
     # intervention_layers = list(range(model.cfg.n_layers))
-    # fwd_hooks = [
-    #     (utils.get_act_name(act_name, layer), harmfulness_hook_fn)
-    #     for layer in intervention_layers
-    #     for act_name in ["resid_pre", "resid_mid", "resid_post"]
-    # ]
+    layer = "17"
+    fwd_hooks = [(utils.get_act_name("resid_post", layer), harmfulness_hook_fn)]
 
     ####################
     # TOKENIZE HISTORY #
@@ -89,11 +98,12 @@ def generate_response(
     ##############
     # GENERATION #
     ##############
-    response: str = _generate_with_hooks(
+    print(f"Generation:\n\t{history}\t{user_message = }\n\t{harmfulness = }")
+    response: str = generate_with_hooks(
         model=model,
         tokens=tokens,
-        max_tokens_generated=30,
-        fwd_hooks=[],
+        fwd_hooks=fwd_hooks,
+        max_tokens_generated=64,
     )
 
     # Append model's response to the chat history

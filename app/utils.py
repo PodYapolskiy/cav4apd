@@ -2,6 +2,7 @@ import os
 import functools
 from tqdm import tqdm
 from typing import Callable
+from pathlib import Path
 
 import torch
 import einops
@@ -9,33 +10,7 @@ import einops
 # from transformers import AutoTokenizer
 from transformer_lens import HookedTransformer, utils
 from transformer_lens.hook_points import HookPoint
-from jaxtyping import Int, Float
-
-
-def load_tensors(direction_name: str, model_name: str, layer: str) -> torch.Tensor:
-    if direction_name not in ["harmful", "harmless", "polite"]:
-        raise ValueError(
-            "Invalid direction name. Must be one of: harmfulness, descriptiveness, politeness."
-        )
-
-    if model_name not in ["Qwen/Qwen-1_8B-chat"]:
-        raise ValueError("Invalid model name. Must be one of: Qwen/Qwen-1_8B-chat, ...")
-
-    file_path = f"../directions/{direction_name}/{model_name}/layer_{layer}.pt"
-    if not os.path.exists(file_path):
-        raise ValueError("File not found. Please check the file path.")
-
-    return torch.load(file_path)
-
-
-# if "Qwen" in MODEL_PATH:
-#     model.tokenizer.padding_side = "left"
-#     model.tokenizer.pad_token = "<|extra_0|>"
-
-#     with_concept_mean_activation = load_tensors("harmful", "Qwen/Qwen-1_8B-chat", "14")
-#     without_concept_mean_activation = load_tensors(
-#         "harmless", "Qwen/Qwen-1_8B-chat", "14"
-#     )
+from jaxtyping import Int, BFloat16
 
 
 # def tokenize_instructions_qwen_chat(
@@ -57,38 +32,61 @@ def load_tensors(direction_name: str, model_name: str, layer: str) -> torch.Tens
 # )
 
 
-def direction_ablation_hook(
-    activation: Float[torch.Tensor, "... d_act"],  # noqa: F722
-    hook: HookPoint,
-    direction: Float[torch.Tensor, "d_act"],  # noqa: F821
-):
-    """
-    Appends the user message to the chat history and generates a dummy model response.
-    The model response reflects the current concept scale values.
-    """
-    generations = []
+def load_tensors(model_name: str, direction_name: str, layer: str) -> torch.Tensor:
+    if model_name not in ["qwen", "gemma"]:
+        raise ValueError("Invalid model name. Must be one of: Qwen/Qwen-1_8B-chat, ...")
 
-    for i in tqdm(range(0, len(instructions), batch_size)):
-        toks = tokenize_instructions_fn(instructions=instructions[i : i + batch_size])
-        generation = _generate_with_hooks(
-            model,
-            toks,
-            max_tokens_generated=max_tokens_generated,
-            fwd_hooks=fwd_hooks,
+    if direction_name not in ["harmful", "harmless", "polite"]:
+        raise ValueError(
+            "Invalid direction name. Must be one of: harmfulness, descriptiveness, politeness."
         )
-        generations.extend(generation)
 
-    return generations
+    file_path = (
+        Path(__file__).parent.parent.resolve()
+        / f"directions/{model_name}/{direction_name}/{layer}.pt"
+    )
+
+    if not os.path.exists(file_path):
+        raise ValueError(
+            f"File not found. Please check the file path.\n{file_path} does not exist"
+        )
+
+    return torch.load(file_path, weights_only=True)
+
+
+def direction_ablation_hook(
+    activation: BFloat16[torch.Tensor, "... d_act"],  # noqa: F722
+    hook: HookPoint,
+    direction: BFloat16[torch.Tensor, "d_act"],  # noqa: F821
+):
+    assert activation.dtype == direction.dtype
+
+    proj = (
+        einops.einsum(
+            activation, direction.view(-1, 1), "... d_act, d_act single -> ... single"
+        )
+        * direction
+    )
+    return activation - proj
 
 
 def get_hook_fn(concept: str, value: int = 3) -> Callable:
-    layer = "14"
+    layer = "17"  # TODO: make layer configurable
+
     if concept == "harmfulness":
-        with_concept_mean_activation = load_tensors(
-            "harmful", "Qwen/Qwen-1_8B-chat", layer
-        )
-        without_concept_mean_activation = load_tensors(
-            "harmless", "Qwen/Qwen-1_8B-chat", layer
+        with_concept_mean_activation = load_tensors("gemma", "harmful", layer)
+        without_concept_mean_activation = load_tensors("gemma", "harmless", layer)
+    elif concept == "descriptiveness":
+        raise NotImplementedError("")
+        with_concept_mean_activation = load_tensors("gemma", "polite", layer)
+        without_concept_mean_activation = load_tensors("gemma", "impolite", layer)
+    elif concept == "politeness":
+        raise NotImplementedError("")
+        with_concept_mean_activation = load_tensors("gemma", "polite", layer)
+        without_concept_mean_activation = load_tensors("gemma", "polite", layer)
+    else:
+        raise ValueError(
+            "Invalid concept. Must be one of: harmfulness, descriptiveness, politeness."
         )
 
     concept_direction = with_concept_mean_activation - without_concept_mean_activation
@@ -124,11 +122,11 @@ def serialize_history(
     return prompt
 
 
-def _generate_with_hooks(
+def generate_with_hooks(
     model: HookedTransformer,
     tokens: Int[torch.Tensor, "seq_len"],  # noqa: F722, F821
     max_tokens_generated: int = 30,
-    fwd_hooks=[],
+    fwd_hooks: list | None = None,
 ) -> str:
     """
     Generate a response given a HookedTransformer model and a prompt.
@@ -142,6 +140,9 @@ def _generate_with_hooks(
     Returns:
         The generated text as a string.
     """
+    if not fwd_hooks:
+        fwd_hooks = []
+
     history_token_len = tokens.shape[0]
 
     all_tokens = torch.zeros(

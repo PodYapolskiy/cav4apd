@@ -18,10 +18,11 @@ with gr.Blocks() as demo:
         # Right column takes approximately 10% width and holds three sliders.
         with gr.Column(scale=1):
             # model choice
+            model_choices = ["google/gemma-2b-it", "Qwen/Qwen-1_8B-chat"]
             model_selector = gr.Dropdown(
-                choices=["Qwen/Qwen-1_8B-chat"],
+                choices=model_choices,
                 label="Select Model",
-                value="Qwen/Qwen-1_8B-chat",
+                value=model_choices[0],
             )
 
             # concept selectors
