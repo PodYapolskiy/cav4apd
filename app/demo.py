@@ -22,7 +22,10 @@ with gr.Blocks() as demo:
         # Right column takes approximately 10% width and holds three sliders.
         with gr.Column(scale=1):
             # model choice
-            model_choices = ["google/gemma-2b-it", "Qwen/Qwen-1_8B-chat"]
+            model_choices = [
+                "google/gemma-2b-it",
+                "Qwen/Qwen-1_8B-chat",
+            ]
             model_selector = gr.Dropdown(
                 choices=model_choices,
                 label="Select Model",
@@ -31,9 +34,6 @@ with gr.Blocks() as demo:
 
             # concept selectors
             harmfulness_slider = gr.Slider(1, 5, step=1, value=3, label="Harmfulness")
-            descriptiveness_slider = gr.Slider(
-                1, 5, step=1, value=3, label="Descriptiveness"
-            )
             politeness_slider = gr.Slider(1, 5, step=1, value=3, label="Politeness")
 
     # Define the button click action to update the chat and pass slider values
@@ -45,7 +45,6 @@ with gr.Blocks() as demo:
             model_selector,
             # concepts
             harmfulness_slider,
-            descriptiveness_slider,
             politeness_slider,
         ],
         outputs=[chatbot, user_input],

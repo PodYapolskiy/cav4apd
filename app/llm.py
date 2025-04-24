@@ -1,14 +1,7 @@
-import os
 import gradio as gr
-import functools
-from tqdm import tqdm
-from typing import Callable
 
 import torch
-import einops
-from transformers import AutoTokenizer
 from transformer_lens import HookedTransformer, utils
-from transformer_lens.hook_points import HookPoint
 
 from utils import serialize_history, generate_with_hooks, get_hook_fn
 
@@ -49,7 +42,6 @@ def generate_response(
     # additional inputs
     model_name: str,
     harmfulness: int,
-    descriptiveness: int,
     politeness: int,
 ) -> tuple[list, str]:
     """
@@ -76,21 +68,21 @@ def generate_response(
     #########
     # HOOKS #
     #########
-    harmfulness_hook_fn = get_hook_fn(concept="harmfulness", value=harmfulness)
-    # descriptiveness_hook_fn = get_hook_fn(concept="descriptiveness", value=descriptiveness)
+    harmfulness_hook_fn = get_hook_fn(
+        concept="harmfulness",
+        value=harmfulness,
+        model_name=model_name,
+        layer_name="blocks.14.hook_resid_pre",
+    )
     # politeness_hook_fn = get_hook_fn(concept="politeness", value=politeness)
 
-    # intervention_layers = list(range(model.cfg.n_layers))
-    # layer = "17"
-
     intervention_layers = list(range(model.cfg.n_layers))
-    # fwd_hooks = [(utils.get_act_name("resid_pre", '14'), harmfulness_hook_fn)]
-
     fwd_hooks = [
-        (utils.get_act_name(act_name, l), harmfulness_hook_fn)
-        for l in intervention_layers
-        for act_name in ["resid_pre"]  # "resid_mid", "resid_post"
+        (utils.get_act_name(act_name, layer_name), harmfulness_hook_fn)
+        for layer_name in intervention_layers
+        for act_name in ["resid_pre", "resid_mid", "resid_post"]  #
     ]
+    # fwd_hooks = [(utils.get_act_name("resid_pre", "23"), harmfulness_hook_fn)]
 
     ####################
     # TOKENIZE HISTORY #

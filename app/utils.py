@@ -8,50 +8,54 @@ import torch
 import einops
 
 # from transformers import AutoTokenizer
-from transformer_lens import HookedTransformer, utils
+from transformer_lens import HookedTransformer
 from transformer_lens.hook_points import HookPoint
 from jaxtyping import Int, BFloat16
 
 
-# def tokenize_instructions_qwen_chat(
-#     tokenizer: AutoTokenizer, instructions: list[str]
-# ) -> Int[torch.Tensor, "batch_size seq_len"]:  # type: ignore  # noqa: F722
-#     prompts = [
-#         QWEN_CHAT_TEMPLATE.format(instruction=instruction)
-#         for instruction in instructions
-#     ]
+def load_tensors(model_path: str, concept: str, layer_name: str) -> torch.Tensor:
+    model_name = model_path.split("/")[1]
 
-#     tokens = tokenizer(
-#         prompts, padding=True, truncation=False, return_tensors="pt"
-#     ).input_ids
-#     return tokens
-
-
-# tokenize_instructions_fn = functools.partial(
-#     tokenize_instructions_qwen_chat, tokenizer=model.tokenizer
-# )
-
-
-def load_tensors(model_name: str, direction_name: str, layer: str) -> torch.Tensor:
-    if model_name not in ["qwen", "gemma"]:
+    if model_name not in ["Qwen-1_8B-chat", "gemma-2b-it"]:
         raise ValueError("Invalid model name. Must be one of: Qwen/Qwen-1_8B-chat, ...")
 
-    if direction_name not in ["harmful", "harmless", "polite"]:
+    if concept not in ["harmfulness", "politeness"]:
         raise ValueError(
-            "Invalid direction name. Must be one of: harmfulness, descriptiveness, politeness."
+            "Invalid direction name. Must be one of: harmfulness, politeness."
         )
 
-    file_path = (
+    if concept == "harmfulness":
+        with_concept_direction_name = "harmful"
+        without_concept_direction_name = "harmless"
+    elif concept == "politeness":
+        with_concept_direction_name = "polite"
+        without_concept_direction_name = "impolite"
+
+    with_concept_file_path = (
         Path(__file__).parent.parent.resolve()
-        / f"directions/{model_name}/{direction_name}/{layer}.pt"
+        / f"directions/{model_name}/{with_concept_direction_name}/{layer_name}.pt"
+    )
+    without_concept_file_path = (
+        Path(__file__).parent.parent.resolve()
+        / f"directions/{model_name}/{without_concept_direction_name}/{layer_name}.pt"
     )
 
-    if not os.path.exists(file_path):
+    if not os.path.exists(with_concept_file_path):
         raise ValueError(
-            f"File not found. Please check the file path.\n{file_path} does not exist"
+            f"File not found. Please check the file path.\n{with_concept_file_path} does not exist"
         )
 
-    return torch.load(file_path, weights_only=True)
+    if not os.path.exists(without_concept_file_path):
+        raise ValueError(
+            f"File not found. Please check the file path.\n{without_concept_file_path} does not exist"
+        )
+
+    with_concept_mean_activation = torch.load(with_concept_file_path, weights_only=True)
+    without_concept_mean_activation = torch.load(
+        without_concept_file_path, weights_only=True
+    )
+
+    return with_concept_mean_activation, without_concept_mean_activation
 
 
 def direction_ablation_hook(
@@ -70,24 +74,15 @@ def direction_ablation_hook(
     return activation - proj
 
 
-def get_hook_fn(concept: str, value: int = 3) -> Callable:
-    layer = "blocks.14.hook_resid_pre"  # TODO: make layer configurable
-
-    if concept == "harmfulness":
-        with_concept_mean_activation = load_tensors("qwen", "harmful", layer)
-        without_concept_mean_activation = load_tensors("qwen", "harmless", layer)
-    elif concept == "descriptiveness":
-        raise NotImplementedError("")
-        with_concept_mean_activation = load_tensors("gemma", "polite", layer)
-        without_concept_mean_activation = load_tensors("gemma", "impolite", layer)
-    elif concept == "politeness":
-        raise NotImplementedError("")
-        with_concept_mean_activation = load_tensors("gemma", "polite", layer)
-        without_concept_mean_activation = load_tensors("gemma", "polite", layer)
-    else:
-        raise ValueError(
-            "Invalid concept. Must be one of: harmfulness, descriptiveness, politeness."
-        )
+def get_hook_fn(
+    concept: str,
+    value: int,
+    model_name: str,
+    layer_name: str = "blocks.14.hook_resid_pre",
+) -> Callable:
+    with_concept_mean_activation, without_concept_mean_activation = load_tensors(
+        model_path=model_name, concept=concept, layer_name=layer_name
+    )
 
     concept_direction = with_concept_mean_activation - without_concept_mean_activation
     concept_direction = concept_direction / (concept_direction.norm())  # * (value / 5)
