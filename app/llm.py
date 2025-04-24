@@ -5,13 +5,13 @@ from transformer_lens import HookedTransformer, utils
 
 from utils import serialize_history, generate_with_hooks, get_hook_fn
 
-MODEL_PATH = "Qwen/Qwen-1_8B-chat"
+# MODEL_PATH = "Qwen/Qwen-1_8B-chat"
 DEVICE = "cpu"
 
 QWEN_USER_CONTENT_TEMPLATE = """<|im_start|>user{content}<|im_end|>\n"""
 QWEN_ASSISTANT_CONTENT_TEMPLATE = """{content}<|im_end|>\n<|im_start|>assistant\n"""
 
-# MODEL_PATH = "google/gemma-2b-it"
+MODEL_PATH = "google/gemma-2b-it"
 
 GEMMA_USER_CONTENT_TEMPLATE = """<bos><start_of_turn>user{content}<end_of_turn>\n"""
 GEMMA_ASSISTANT_CONTENT_TEMPLATE = (
@@ -34,6 +34,8 @@ model = HookedTransformer.from_pretrained_no_processing(
 if "Qwen" in MODEL_PATH:
     model.tokenizer.padding_side = "left"
     model.tokenizer.pad_token = "<|extra_0|>"
+if "gemma" in MODEL_PATH:
+    model.tokenizer.padding_side = "left"
 
 
 def generate_response(
@@ -72,7 +74,7 @@ def generate_response(
         concept="harmfulness",
         value=harmfulness,
         model_name=model_name,
-        layer_name="blocks.14.hook_resid_pre",
+        layer_name="blocks.10.hook_resid_post",
     )
     # politeness_hook_fn = get_hook_fn(concept="politeness", value=politeness)
 
@@ -104,7 +106,7 @@ def generate_response(
         model=model,
         tokens=tokens,
         fwd_hooks=fwd_hooks,
-        max_tokens_generated=64,
+        max_tokens_generated=128,
     )
 
     # Append model's response to the chat history
